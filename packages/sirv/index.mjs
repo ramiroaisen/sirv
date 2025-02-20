@@ -45,7 +45,8 @@ function viaLocal(dir, isEtag, uri, extns) {
 			if (stats.isDirectory()) continue;
 			headers = toHeaders(name, stats, isEtag);
 			headers['Cache-Control'] = isEtag ? 'no-cache' : 'no-store';
-			return { abs, stats, headers };
+			const body = fs.readFileSync(abs);
+			return { abs, stats, headers, body };
 		}
 	}
 }
@@ -54,7 +55,7 @@ function is404(req, res) {
 	return (res.statusCode=404,res.end());
 }
 
-function send(req, res, file, stats, headers) {
+function send(req, res, file, stats, headers, body) {
 	let code=200, tmp, opts={};
 	headers = { ...headers };
 
@@ -74,7 +75,7 @@ function send(req, res, file, stats, headers) {
 		let start = opts.start = parseInt(x, 10) || 0;
 
 		if (end >= stats.size) {
-			end = stats.size - 1;
+			end = opts.end = stats.size - 1;
 		}
 
 		if (start >= stats.size) {
@@ -88,8 +89,12 @@ function send(req, res, file, stats, headers) {
 		headers['Accept-Ranges'] = 'bytes';
 	}
 
+	const start = opts.start;
+	const end = opts.end == undefined ? undefined : opts.end + 1;
+
 	res.writeHead(code, headers);
-	fs.createReadStream(file, opts).pipe(res);
+	res.end(body.slice(start, end));
+	// fs.createReadStream(file, opts).pipe(res);
 }
 
 const ENCODING = {
@@ -157,7 +162,9 @@ export default function (dir, opts={}) {
 			let headers = toHeaders(name, stats, isEtag);
 			if (cc) headers['Cache-Control'] = cc;
 
-			FILES['/' + name.normalize().replace(/\\+/g, '/')] = { abs, stats, headers };
+			const body = fs.readFileSync(abs);
+
+			FILES['/' + name.normalize().replace(/\\+/g, '/')] = { abs, stats, headers, body };
 		});
 	}
 
@@ -189,6 +196,6 @@ export default function (dir, opts={}) {
 		}
 
 		setHeaders(res, pathname, data.stats);
-		send(req, res, data.abs, data.stats, data.headers);
+		send(req, res, data.abs, data.stats, data.headers, data.body);
 	};
 }
